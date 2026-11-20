@@ -1,0 +1,48 @@
+[project]
+name = "nga-reminder"
+version = "0.1.0"
+description = "追踪 NGA 指定用户在指定主题内的回贴，并推送桌面通知（只读）"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "DarkWinoom" }]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "httpx>=0.27",
+    "pydantic-settings>=2.4",
+    # 桌面通知后端按平台各走各的：Windows 用 WinRT（windows-toasts），
+    # macOS 用系统自带的 osascript，Linux 用 notify-send（libnotify）。
+    # windows-toasts 只在 Windows 上装——Linux 容器里没有 WinRT，
+    # 装了也用不上，还会让 pip 在非 Windows 平台直接失败。
+    "windows-toasts>=1.3; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+nga-reminder = "nga_reminder.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nga_reminder"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

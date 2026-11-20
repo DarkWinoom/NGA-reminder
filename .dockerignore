@@ -1,0 +1,42 @@
+# 版本控制
+.git
+.gitignore
+
+# 本地环境与数据
+.venv
+.env
+.env.*
+data
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# 构建产物
+build
+dist
+*.egg-info
+wheelhouse
+
+# 缓存
+__pycache__
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.coverage
+htmlcov
+
+# 不进镜像的内容
+tests
+scripts
+.gitattributes
+.github
+
+# 文档与素材（镜像里用不到）
+CONTEXT.md
+assets
+
+# 本地过程材料（.gitignore 已排除，别再进构建上下文）
+.local-work

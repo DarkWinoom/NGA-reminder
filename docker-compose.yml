@@ -1,0 +1,47 @@
+# NGA 提醒助手 —— 容器编排
+#
+#   docker compose up -d --build
+#   docker compose logs -f
+#
+# 界面： http://127.0.0.1:8765/
+# 账号：在网页右上角的「账号设置」里填 NGA Cookie（只存在这个 volume 里）。
+
+services:
+  nga-reminder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nga-reminder:local
+    container_name: nga-reminder
+    restart: unless-stopped
+    ports:
+      # 只监听回环地址：这个工具是本机自用，不要暴露到局域网。
+      - "127.0.0.1:8765:8765"
+    environment:
+      NGA_HOST: "0.0.0.0"
+      NGA_PORT: "8765"
+      NGA_DB_PATH: "/data/nga.db"
+      NGA_OPEN_BROWSER: "false"
+      # 点击桌面通知时打开的地址（容器里弹不了桌面通知，通知会转给宿主上的桥接）。
+      NGA_APP_URL: "http://127.0.0.1:8765/"
+      # 在 Docker 部署下也要真桌面弹窗，就在宿主机上跑通知桥接：
+      #   1) 宿主机上跑（Windows / macOS / Linux，命令一样）：
+      #      uv run python scripts/notify_bridge.py
+      #   2) 桥接和容器用同一个口令（写在 .env 的 NGA_BRIDGE_TOKEN 里）
+      # 地址只能在这里拼：host.docker.internal 是 Docker 给容器用的域名，
+      # 宿主上直接跑原生版时它解析不了。
+      NGA_NOTIFY_WEBHOOK: "http://host.docker.internal:8766/notify"
+      NGA_NOTIFY_WEBHOOK_TOKEN: "${NGA_NOTIFY_WEBHOOK_TOKEN:-}"
+      # 也可以在这里直接给凭据，但那样会留在 compose 文件里，
+      # 更推荐进网页「账号设置」填写，值只落到 volume 里的 SQLite。
+      # NGA_UID: ""
+      # NGA_CID: ""
+    volumes:
+      - nga-data:/data
+    # Linux 上的 Docker 默认不认 host.docker.internal；这一行把它指到宿主网关。
+    # Docker Desktop（Mac / Windows）本来就认，加了也无害。
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  nga-data:

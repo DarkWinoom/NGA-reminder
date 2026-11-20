@@ -1,0 +1,42 @@
+# 本地环境与密钥
+.env
+.env.*
+!.env.example
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# NGA Cookie 绝不入库
+config.local.*
+nga_cookie*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+build/
+dist/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 临时探针
+.tmp_*
+_*probe*.py
+
+# 本地工作区：设计稿、评估文档、决策记录、截图沙盒……
+# 这些是**过程材料**，不进版本库。项目里的任何内容都不引用它们。
+.local-work/
+
+# 开机自启快捷方式：指向本机的绝对路径，换台机器就失效了。
+# 用 scripts\make_startup_shortcut.ps1 重新生成即可。
+scripts/*.lnk

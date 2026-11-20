@@ -1,0 +1,63 @@
+name: nga-reminder-sandbox
+
+services:
+  ingress:
+    image: nginx:alpine
+    ports:
+      - "127.0.0.1:18765:8765"
+    volumes:
+      - ./scripts/sandbox-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - ingress
+      - sandbox
+    depends_on:
+      app:
+        condition: service_healthy
+        restart: true
+
+  app:
+    image: nga-reminder:sandbox
+    build: .
+    environment:
+      NGA_APP_URL: "http://127.0.0.1:18765/"
+      NGA_BASE_URL: "http://mock:8765"
+      NGA_NOTIFY_WEBHOOK: "http://mock:8765/notify"
+      NGA_TIMEOUT: "5"
+      NGA_MAX_RETRIES: "1"
+      POLL_INTERVAL: "0"
+    volumes:
+      - sandbox-data:/data
+    networks:
+      - sandbox
+    depends_on:
+      mock:
+        condition: service_healthy
+    healthcheck:
+      interval: 2s
+
+  mock:
+    image: nga-reminder:sandbox
+    command: ["python", "/sandbox/mock_nga.py"]
+    volumes:
+      - ./scripts/mock_nga.py:/sandbox/mock_nga.py:ro
+    tmpfs:
+      - /data
+    networks:
+      - sandbox
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "from urllib.request import urlopen; urlopen('http://127.0.0.1:8765/health', timeout=2)"
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  sandbox-data:
+
+networks:
+  ingress:
+  sandbox:
+    internal: true
