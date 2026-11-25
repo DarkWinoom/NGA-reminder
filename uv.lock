@@ -234,7 +234,7 @@ wheels = [
 
 [[package]]
 name = "nga-reminder"
-version = "0.1.0"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
@@ -242,6 +242,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "windows-toasts", marker = "sys_platform == 'win32'" },
+    { name = "xlsxwriter" },
 ]
 
 [package.optional-dependencies]
@@ -261,6 +262,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
     { name = "windows-toasts", marker = "sys_platform == 'win32'", specifier = ">=1.3" },
+    { name = "xlsxwriter", specifier = ">=3.2,<4" },
 ]
 provides-extras = ["dev"]
 
@@ -1027,4 +1029,13 @@ wheels = [
     { url = "https://mirrors.aliyun.com/pypi/packages/68/43/c81672457002908b8c0f1e4672db1d0b8885c2894c6768fe9b0162af9ee5/winrt_windows_ui_notifications-3.2.1-cp314-cp314-win32.whl", hash = "sha256:00a7579ca0870134c27def1418c259fb18efe5b88aa399de85b4712f1add1b55" },
     { url = "https://mirrors.aliyun.com/pypi/packages/17/d8/910a58698d722120f2401c3bfeb6018361d92f3b2814caae839f54693305/winrt_windows_ui_notifications-3.2.1-cp314-cp314-win_amd64.whl", hash = "sha256:943599c727abf710ae94644b1d521e11857bd568e080e894a8be11aa717e383a" },
     { url = "https://mirrors.aliyun.com/pypi/packages/b5/a3/1db0f2ec28a4eadd0876c0ac3a3d78514027c5afe35737b164e03c98b234/winrt_windows_ui_notifications-3.2.1-cp314-cp314-win_arm64.whl", hash = "sha256:2a496c7e796b537966df7b26753b20bc40c5c1fbe96b3b3051a1debc00b80f07" },
+]
+
+[[package]]
+name = "xlsxwriter"
+version = "3.3.4"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/c5/a7/2d344f4a7119f2bd2ef6c672f99af610c5f3e11b024846680d5895cf41f6/xlsxwriter-3.3.4.tar.gz", hash = "sha256:3512f4210622d4040e0f2882e2caf7263a3fd8be876704304314f0e275377fea" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/a4/f4/42d98147a0e3e2ae905a1c51bd6fcac1e551e4223b35fbf5d9769f59ffb6/xlsxwriter-3.3.4-py3-none-any.whl", hash = "sha256:da62fecb24fdd0f003c874c86109b9e1245ae89533052745ab85a085eb2b04d7" },
 ]

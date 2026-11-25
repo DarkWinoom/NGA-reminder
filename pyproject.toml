@@ -1,6 +1,6 @@
 [project]
 name = "nga-reminder"
-version = "0.1.0"
+version = "0.3.0"
 description = "追踪 NGA 指定用户在指定主题内的回贴，并推送桌面通知（只读）"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -11,6 +11,7 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "httpx>=0.27",
     "pydantic-settings>=2.4",
+    "xlsxwriter>=3.2,<4",
     # 桌面通知后端按平台各走各的：Windows 用 WinRT（windows-toasts），
     # macOS 用系统自带的 osascript，Linux 用 notify-send（libnotify）。
     # windows-toasts 只在 Windows 上装——Linux 容器里没有 WinRT，

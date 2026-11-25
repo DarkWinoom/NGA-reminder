@@ -7,18 +7,22 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Annotated, Literal
+from urllib.parse import quote
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from . import __version__
 from .config import Settings, get_settings
 from .db import POLL_INTERVAL_KEY, Store
+from .export import build_export
 from .nga.bbcode import to_display_text
-from .nga.client import NgaClient, parse_thread_ref
+from .nga.client import NgaClient, parse_thread_ref, post_url
 from .nga.errors import (
     NgaApiError,
     NgaAuthError,
@@ -109,30 +113,10 @@ class ViewSinceBody(BaseModel):
     view_since: str = Field(default="", description="订阅时间：只收录这个时间之后的新回复")
 
 
-def _post_url(tid: int | None, pid: int | None, page: int | None = None) -> str:
-    """The link that opens a reply on NGA.
-
-    When the page is known we go straight to the page the reply lives on and
-    anchor on the reply itself: ``read.php?tid=…&page=76#pid…Anchor`` lands on
-    the right page *and* scrolls to that floor.  Without the page we can only
-    link to the single-reply view NGA builds from a pid -- which shows the
-    reply, but not the thread around it.
-
-    The ``Anchor`` suffix is not a guess -- it is what NGA puts in the page.
-    Measured on 2026-11-18 (thread 47288722, page 5805), every floor carries::
-
-        <td id='postcontainer116091'><a id='pid888185460Anchor'></a><a name='l116091'></a>
-
-    So ``#pid888185460`` matches nothing on the page; ``#pid888185460Anchor``
-    is the anchor that actually exists.
-    """
-    if not tid:
-        return ""
-    if pid and page:
-        return f"https://bbs.nga.cn/read.php?tid={tid}&page={page}#pid{pid}Anchor"
-    if pid:
-        return f"https://bbs.nga.cn/read.php?tid={tid}&pid={pid}"
-    return ""
+class ExportBody(BaseModel):
+    subscription_ids: list[Annotated[int, Field(gt=0, le=2**63 - 1)]] = Field(min_length=1)
+    format: Literal["json", "xlsx"]
+    timezone_offset_minutes: int = Field(default=0, ge=-840, le=840)
 
 
 def _notify_info(state: AppState) -> dict:
@@ -259,7 +243,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             client.close()
             store.close()
 
-    app = FastAPI(title="NGA Reminder", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="NGA Reminder", version=__version__, lifespan=lifespan)
     app.state.nga = state
 
     def _store() -> Store:
@@ -364,6 +348,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             for sub in _store().list_subscriptions()
         ]
 
+    @app.post("/api/subscriptions/export")
+    def export_subscriptions(body: ExportBody) -> Response:
+        ids = list(dict.fromkeys(body.subscription_ids))
+        selection = _store().subscription_export(ids)
+        if len(selection) != len(ids):
+            raise HTTPException(status_code=404, detail="部分订阅已不存在，请重新选择。")
+        zone = timezone(timedelta(minutes=body.timezone_offset_minutes))
+        filename, media_type, content = build_export(
+            [selection[sub_id] for sub_id in ids], body.format, datetime.now(zone)
+        )
+        return Response(
+            content,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename, safe='')}",
+                "Cache-Control": "no-store",
+            },
+        )
+
     @app.post("/api/subscriptions")
     def create_subscription(body: SubscriptionBody) -> dict:
         tid, url_author_uid = (None, None)
@@ -454,7 +457,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # 库里存的是原始 BBCode，界面要的是能直接读的正文
         for post in posts:
             post["content"] = to_display_text(post.get("content") or "")
-            post["url"] = _post_url(
+            post["url"] = post_url(
                 sub.tid, post.get("pid"), post.get("floor_page")
             )
         return posts
@@ -653,7 +656,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         for item in feed:
             item["content"] = to_display_text(item.get("content") or "")
-            item["url"] = _post_url(
+            item["url"] = post_url(
                 item.get("tid"), item.get("pid"), item.get("floor_page")
             )
             # 游标由服务端生成：客户端原样带回来，不用自己拼时间戳。

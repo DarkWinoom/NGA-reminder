@@ -62,6 +62,15 @@ def _decode_json(response: httpx.Response) -> tuple[Any, str]:
     return json.loads(stripped), stripped
 
 
+def post_url(tid: int | None, pid: int | None, page: int | None = None) -> str:
+    """Link to the original page anchor, or use NGA's single-reply view."""
+    if not tid or not pid:
+        return ""
+    if page:
+        return f"https://bbs.nga.cn/read.php?tid={tid}&page={page}#pid{pid}Anchor"
+    return f"https://bbs.nga.cn/read.php?tid={tid}&pid={pid}"
+
+
 def parse_thread_ref(value: str | int) -> tuple[int, int | None]:
     """Parse a thread reference into ``(tid, author_id)``.
 

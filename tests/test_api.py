@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import time
+from datetime import UTC, datetime, timedelta, timezone
+from io import BytesIO
+from urllib.parse import unquote
+from xml.etree import ElementTree
+from zipfile import ZipFile
 
 import pytest
 from fastapi.testclient import TestClient
 
 from nga_reminder.api import create_app
 from nga_reminder.config import Settings
+from nga_reminder.models import Floor
 
 
 class QuietNotifier:
@@ -48,6 +54,123 @@ def test_index_page_is_served(client):
 def test_static_files_are_served(client):
     assert client.get("/static/app.js").status_code == 200
     assert client.get("/static/style.css").status_code == 200
+
+
+def _download_name(response) -> str:
+    prefix = "attachment; filename*=UTF-8''"
+    disposition = response.headers["content-disposition"]
+    assert disposition.startswith(prefix)
+    return unquote(disposition.removeprefix(prefix))
+
+
+def test_json_export_includes_saved_replies_outside_the_feed_window(client):
+    store = client.app.state.nga.store
+    sub = store.upsert_subscription(101, 22, alias="订阅用户", title="主题")
+    store.record_post(
+        sub.id,
+        Floor(123, 2, 22, "", 1_700_000_000, "[b]保存的回复[/b]"),
+        floor_no=42,
+        floor_page=3,
+    )
+
+    started = datetime.now(UTC).replace(microsecond=0)
+    res = client.post("/api/subscriptions/export", json={
+        "subscription_ids": [sub.id, sub.id], "format": "json", "timezone_offset_minutes": 480,
+    })
+
+    assert res.status_code == 200
+    filename = _download_name(res)
+    assert filename.startswith("NGA提醒助手_订阅用户_") and filename.endswith(".json")
+    stamp = filename.removeprefix("NGA提醒助手_订阅用户_").removesuffix(".json")
+    assert len(stamp) == 14 and stamp.isdecimal()
+    exported_at = datetime.strptime(stamp, "%Y%m%d%H%M%S").replace(
+        tzinfo=timezone(timedelta(hours=8))
+    )
+    assert started <= exported_at <= datetime.now(UTC)
+    data = res.json()
+    assert data["subscription"]["alias"] == "订阅用户"
+    assert data["replies"] == [{
+        "pid": 123,
+        "posted_at": "2023-11-14T22:13:20+00:00",
+        "floor_no": 42,
+        "page": 3,
+        "content": "保存的回复",
+        "quote_text": "",
+        "url": "https://bbs.nga.cn/read.php?tid=101&page=3#pid123Anchor",
+    }]
+
+
+def test_xlsx_export_has_three_columns_and_one_row_per_reply(client):
+    store = client.app.state.nga.store
+    sub = store.upsert_subscription(101, 22, alias="用户A")
+    store.record_post(sub.id, Floor(52, 2, 22, "", 1_700_000_000, "{=1+1}"))
+    store.record_post(sub.id, Floor(51, 1, 22, "", 0, "长" * 33_000))
+
+    res = client.post("/api/subscriptions/export", json={
+        "subscription_ids": [sub.id], "format": "xlsx", "timezone_offset_minutes": 480,
+    })
+
+    assert res.status_code == 200
+    assert res.headers["content-type"].endswith("spreadsheetml.sheet")
+    assert _download_name(res).startswith("NGA提醒助手_用户A_")
+    with ZipFile(BytesIO(res.content)) as workbook:
+        assert "xl/worksheets/sheet2.xml" not in workbook.namelist()
+        sheet = ElementTree.fromstring(workbook.read("xl/worksheets/sheet1.xml"))
+    namespaces = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    rows = sheet.findall(".//x:row", namespaces)
+    assert [row.attrib["r"] for row in rows] == ["1", "2", "3"]
+    header = rows[0].findall("x:c/x:is/x:t", namespaces)
+    assert [cell.text for cell in header] == ["订阅名称", "回复时间", "回复内容"]
+    assert rows[1].findtext("x:c[@r='A2']/x:is/x:t", namespaces=namespaces) == "用户A"
+    assert rows[1].findtext("x:c[@r='C2']/x:is/x:t", namespaces=namespaces) == "{=1+1}"
+    assert rows[2].findtext("x:c[@r='C3']/x:is/x:t", namespaces=namespaces) == "长" * 32_766 + "…"
+    time_value = rows[1].findtext("x:c[@r='B2']/x:v", namespaces=namespaces)
+    excel_days = (datetime(2023, 11, 15, 6, 13, 20) - datetime(1899, 12, 30)).total_seconds()
+    assert float(time_value) == pytest.approx(excel_days / 86_400, abs=1e-10, rel=0)
+    assert sheet.find(".//x:f", namespaces) is None
+
+
+@pytest.mark.parametrize("file_format", ["json", "xlsx"])
+def test_multiple_subscriptions_export_one_file_each(client, file_format):
+    store = client.app.state.nga.store
+    first = store.upsert_subscription(101, 22, alias="用户/A")
+    second = store.upsert_subscription(101, 33, alias="用户/A")
+    store.set_enabled(second.id, False)
+
+    res = client.post("/api/subscriptions/export", json={
+        "subscription_ids": [second.id, first.id], "format": file_format,
+    })
+
+    assert res.status_code == 200
+    assert res.headers["content-type"] == "application/zip"
+    filename = _download_name(res)
+    assert filename.startswith("NGA提醒助手_") and filename.endswith(".zip")
+    stamp = filename.removeprefix("NGA提醒助手_").removesuffix(".zip")
+    assert len(stamp) == 14 and stamp.isdecimal()
+    datetime.strptime(stamp, "%Y%m%d%H%M%S")
+    first_entry = f"NGA提醒助手_用户_A_{stamp}.{file_format}"
+    with ZipFile(BytesIO(res.content)) as archive:
+        assert archive.namelist() == [
+            first_entry, f"NGA提醒助手_用户_A（2）_{stamp}.{file_format}",
+        ]
+        assert archive.testzip() is None
+        if file_format == "xlsx":
+            with ZipFile(BytesIO(archive.read(first_entry))) as workbook:
+                assert "xl/worksheets/sheet1.xml" in workbook.namelist()
+
+
+def test_export_rejects_missing_subscriptions_and_invalid_requests(client):
+    store = client.app.state.nga.store
+    sub = store.upsert_subscription(101, 22)
+    for ids, file_format, status in (
+        ([sub.id, sub.id + 1], "json", 404),
+        ([], "json", 422),
+        ([sub.id], "csv", 422),
+    ):
+        res = client.post("/api/subscriptions/export", json={
+            "subscription_ids": ids, "format": file_format,
+        })
+        assert res.status_code == status
 
 
 def test_add_subscription_requires_a_target_user(client):

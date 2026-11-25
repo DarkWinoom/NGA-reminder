@@ -6,22 +6,21 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 
 /* ------------------------------------------------------------------ 工具 */
 
-async function api(path, options = {}) {
+async function request(path, options = {}) {
   const res = await fetch(path, {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
-  let body = null;
-  try {
-    body = await res.json();
-  } catch {
-    body = null;
-  }
   if (!res.ok) {
+    const body = await res.json().catch(() => null);
     const detail = (body && body.detail) || `${res.status} ${res.statusText}`;
     throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
   }
-  return body;
+  return res;
+}
+
+async function api(path, options) {
+  return (await request(path, options)).json().catch(() => null);
 }
 
 const post = (path, data) =>
@@ -1641,6 +1640,95 @@ async function submitSubscription() {
   }
 }
 
+/* ---------------------------------------------------------- 导出订阅 */
+
+let exportFormatTabs;
+let exportBusy = false;
+
+function exportChoices() {
+  return [...$("export-options").querySelectorAll("input")];
+}
+
+function updateExportSelection() {
+  const choices = exportChoices();
+  const count = choices.filter((input) => input.checked).length;
+  $("export-select-all").textContent = count === choices.length ? "取消全选" : "全选";
+  $("export-select-all").disabled = exportBusy;
+  $("export-count").textContent = count > 1 ? `已选 ${count} 项 · ZIP` : `已选 ${count} 项`;
+  $("export-download").disabled = exportBusy || count === 0;
+  $("export-download").textContent = exportBusy ? "正在导出…" : "下载";
+}
+
+function openExportModal() {
+  if (exportBusy) return;
+  const list = $("export-options");
+  list.replaceChildren();
+  for (const sub of state.subs) {
+    const option = el("label", "export-option");
+    const input = el("input");
+    input.type = "checkbox";
+    input.value = String(sub.id);
+    input.checked = state.subs.length === 1 || state.activeSubId === sub.id;
+    const info = el("span", "export-option-info");
+    const title = sub.title || `主题 ${sub.tid}`;
+    const name = sub.display_name || `UID ${sub.author_uid}`;
+    info.append(
+      el("span", "export-option-title", name),
+      el("span", "export-option-meta", title)
+    );
+    option.append(input, info);
+    list.append(option);
+  }
+  $("export-select-all").hidden = state.subs.length < 2;
+  $("export-empty").hidden = state.subs.length > 0;
+  $("export-format-field").hidden = state.subs.length === 0;
+  setMsg("export-msg", "");
+  updateExportSelection();
+  openModal("modal-export");
+  (list.querySelector("input") || $("modal-export").querySelector("button[data-close]")).focus();
+}
+
+async function downloadExport() {
+  const ids = exportChoices().filter((input) => input.checked).map((input) => Number(input.value));
+  if (exportBusy || !ids.length) return;
+  const format = exportFormatTabs.value;
+  exportBusy = true;
+  updateExportSelection();
+  setMsg("export-msg", "");
+  try {
+    const response = await request("/api/subscriptions/export", {
+      method: "POST",
+      body: JSON.stringify({
+        subscription_ids: ids,
+        format,
+        timezone_offset_minutes: -new Date().getTimezoneOffset(),
+      }),
+    });
+    const disposition = response.headers.get("Content-Disposition");
+    const encodedName = disposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    const filename = encodedName
+      ? decodeURIComponent(encodedName)
+      : disposition?.match(/filename="([^"]+)"/i)?.[1];
+    const extension = ids.length > 1 ? "zip" : format;
+    const url = URL.createObjectURL(await response.blob());
+    const link = el("a");
+    link.href = url;
+    link.download = filename || `nga-subscriptions.${extension}`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    if (!$("modal-export").hidden) closeModal("modal-export");
+    toast("导出文件已生成", "ok");
+  } catch (err) {
+    if ($("modal-export").hidden) toast(err.message, "bad");
+    else setMsg("export-msg", err.message, "bad");
+  } finally {
+    exportBusy = false;
+    updateExportSelection();
+  }
+}
+
 /* ---------------------------------------------------------- 账号设置 */
 
 async function openSetupModal() {
@@ -1887,6 +1975,20 @@ async function guideAddSubscription() {
 
 function wire() {
   $("btn-account").onclick = openSetupModal;
+  $("btn-export").onclick = openExportModal;
+  $("export-download").onclick = downloadExport;
+  $("export-options").onchange = updateExportSelection;
+  $("export-select-all").onclick = () => {
+    const choices = exportChoices();
+    const select = choices.some((input) => !input.checked);
+    choices.forEach((input) => { input.checked = select; });
+    updateExportSelection();
+  };
+  exportFormatTabs = createTabs({
+    root: $("export-format"),
+    options: [{ value: "json", label: "JSON" }, { value: "xlsx", label: "XLSX" }],
+    value: "json",
+  });
   $("banner-action").onclick = openSetupModal;
   $("notify-test").onclick = testNotification;
   $("notify-browser-enable").onclick = toggleBrowserNotify;

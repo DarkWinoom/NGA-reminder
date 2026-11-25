@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import UTC, datetime
+from itertools import chain, groupby
 from pathlib import Path
 from typing import Any
 
@@ -216,6 +217,33 @@ class Store:
         conn = self._connect()
         row = conn.execute("SELECT * FROM subscription WHERE id = ?", (sub_id,)).fetchone()
         return self._row_to_subscription(row) if row else None
+
+    def subscription_export(self, ids: list[int]) -> dict[int, tuple[Subscription, list[dict]]]:
+        """Read the selected subscriptions and all saved replies in one SQLite snapshot."""
+        placeholders = ",".join("?" for _ in ids)
+        reply_columns = ("pid", "floor_no", "floor_page", "ts", "content", "quote_text")
+        conn = self._connect()
+        rows = conn.execute(
+            f"""
+            SELECT s.*, p.pid, p.floor_no, p.floor_page, p.ts, p.content, p.quote_text
+            FROM subscription s
+            LEFT JOIN seen_post p ON p.subscription_id = s.id
+            WHERE s.id IN ({placeholders})
+            ORDER BY s.id, p.ts DESC, p.pid DESC
+            """,
+            ids,
+        )
+        result = {}
+        for sub_id, group in groupby(rows, key=lambda row: row["id"]):
+            first = next(group)
+            subscription = self._row_to_subscription(first)
+            replies = [
+                {column: row[column] for column in reply_columns}
+                for row in chain((first,), group)
+                if row["pid"] is not None
+            ]
+            result[sub_id] = (subscription, replies)
+        return result
 
     def initialized(self, sub_id: int) -> bool:
         """Whether the subscription has already been baselined."""

@@ -84,6 +84,13 @@
       <path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/>
     </svg>
   </button>
+  <button class="icon-btn" id="btn-export" type="button" title="导出订阅"
+          aria-label="导出订阅" aria-haspopup="dialog">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 15V3m9 12v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <path d="m7 10l5 5l5-5"/>
+    </svg>
+  </button>
 </header>
 
 <!-- ========================= 主体 ========================= -->
@@ -204,6 +211,40 @@
       <span class="spacer"></span>
       <button class="btn" id="btn-verify">验证</button>
       <button class="btn solid" id="btn-save-cookie">更新账号</button>
+    </footer>
+  </div>
+</div>
+
+<!-- ========================= 弹窗：导出订阅 ========================= -->
+<div class="modal-root" id="modal-export" hidden>
+  <div class="scrim" data-close></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="export-title">
+    <header class="modal-head">
+      <h2 id="export-title">导出订阅</h2>
+      <button class="icon-btn" type="button" data-close aria-label="关闭">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </header>
+    <div class="modal-body">
+      <div class="export-list-head">
+        <h3 id="export-list-label" class="field-label">选择订阅</h3>
+        <button class="btn ghost" id="export-select-all" type="button" hidden>全选</button>
+      </div>
+      <div class="export-options" id="export-options" role="group"
+           aria-labelledby="export-list-label"></div>
+      <p class="field-help" id="export-empty" hidden>还没有可以导出的订阅。</p>
+      <div class="field" id="export-format-field">
+        <span id="export-format-label" class="field-label">文件格式</span>
+        <div class="tabs" id="export-format" role="radiogroup"
+             aria-labelledby="export-format-label"></div>
+      </div>
+      <div class="inline-msg" id="export-msg" role="alert"></div>
+    </div>
+    <footer class="modal-foot">
+      <span class="export-count" id="export-count" role="status"></span>
+      <span class="spacer"></span>
+      <button class="btn" type="button" data-close>取消</button>
+      <button class="btn solid" id="export-download" type="button" disabled>下载</button>
     </footer>
   </div>
 </div>
